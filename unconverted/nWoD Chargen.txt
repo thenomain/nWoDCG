@@ -122,7 +122,7 @@ This looks easy because we haven't added Mage.
 @@ output: <mental>/<physical>/<social>
 	iter(
 		mental physical social, 
-		sub(u(f.points.category, %0, attribute, %i0), 3), , /
+		sub( u( f.points.category, %0, attribute, %i0), 3), , /
 	)
 
 think u(cg/f.allocated.attributes, pmatch(thenomain))

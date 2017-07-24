@@ -489,13 +489,15 @@ Column two is a wider column with a lot of other things
 @@ 0: sheet dbref, 1: stat name, 2: name width
 	%b [ljust(
 		[ansi(
-			n, %1: [ladd(setr(g, u(f.fake-getstat, %0, %1)), .)], 
+			n, [edit( %1, _, %b )]: 
+			[ladd( setr( g, u( f.fake-getstat, %0, %1 )), . )], 
 			xh, 
-				[if(t(rest(%qg, .)), %b%([first(%qg, .)]%))]
+			[if( t( rest( %qg, . )), %b%([first( %qg, . )]%) )]
 		)], 
-		sub(dec(%2), first(%qg, .))
+		max( sub( dec( %2 ), first( %qg, . )), inc( strlen( %1 )))
 	)] 
-	[u(f.format-dots, %0, %1)]
+	[u( f.format-dots, %0, %1 )]
+
 
 ---
 
@@ -1532,7 +1534,8 @@ think u(nuSheet/block.rites, pmatch(me), 51, 40)
 --
 
 think u(nuSheet/block.traits, pmatch(me), 51, 40)
-
+think u( #49/block.traits, pmatch(nia), 51, 40 )
+think u( #49/f.format-pool, pmatch(nia), essence, 25 ) -- %qg -- [sub( dec( 25 ), first( %qg, . ))]
 
 --------------------------------------------------------------------------------
 -- Block: Others ---------------------------------------------------------------

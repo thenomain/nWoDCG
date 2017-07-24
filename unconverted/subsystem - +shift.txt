@@ -18,8 +18,8 @@ We'll see where this gets to.
 ================================================================================
 == DATA ========================================================================
 
-&d.statfuncs sfs=#204
-&d.healthfrob sfs=#205
+&d.sfp sfs=#204
+&d.health sfs=#205
 
 &d.forms.werewolf sfs=Hishu.Dalu.Gauru.Urshal.Urhan
 &d.forms.skinthief sfs=Human.*
@@ -181,7 +181,7 @@ qf: full name of matched form
 
 &c.shift sfs=$+shift*: @pemit %#=
 	[setq(0, trim(%0))]
-	[setq(s, u([v(d.statfuncs)]/f.find-sheet, %#))]
+	[setq(s, u([v(d.sfp)]/f.find-sheet, %#))]
 	[setq(c, udefault(%qs/_form.current, u(f.default-form, u(%qs/_bio.template))))]
 	[setq(t, setunion(iter(u(%qs/_bio.template), u(d.forms.%i0), ., .), , .))]
 	[setq(f, grab(.%qt, %q0*, .))]
@@ -216,7 +216,7 @@ qf: full name of matched form
 
 --
 
-&c.shift sfs=$+shift*: @pemit %#=[setq(0, trim(%0))][setq(s, u([v(d.statfuncs)]/f.find-sheet, %#))][setq(c, udefault(%qs/_form.current, u(f.default-form, u(%qs/_bio.template))))][setq(t, setunion(iter(u(%qs/_bio.template), u(d.forms.%i0), ., .), , .))][setq(f, grab(.%qt, %q0*, .))][case(0, isapproved(%#, approved), [alert(shift)] You may not use this command until approved., strlen(%qt), [alert(shift)] Your template cannot +shift., strlen(%q0), [alert(shift)] Valid Forms: [itemize(%qt, .)]%r[space(strlen(alert(shift)))] You are in form: %qc[if(hasattr(%!, form.%qc.notes), %r[wrap(Notes: [u(form.%qc.notes)], 78, left, space(8))])], t(%qf), [alert(shift)] I don't have a record of that form., comp(%qc, %qf), [alert(shift)] You are already in %qc., u(f.shift-workhorse, %qs, %qc, %qf))]
+&c.shift sfs=$+shift*: @pemit %#=[setq(0, trim(%0))][setq(s, u([v(d.sfp)]/f.find-sheet, %#))][setq(c, udefault(%qs/_form.current, u(f.default-form, u(%qs/_bio.template))))][setq(t, setunion(iter(u(%qs/_bio.template), u(d.forms.%i0), ., .), , .))][setq(f, grab(.%qt, %q0*, .))][case(0, isapproved(%#, approved), [alert(shift)] You may not use this command until approved., strlen(%qt), [alert(shift)] Your template cannot +shift., strlen(%q0), [alert(shift)] Valid Forms: [itemize(%qt, .)]%r[space(strlen(alert(shift)))] You are in form: %qc[if(hasattr(%!, form.%qc.notes), %r[wrap(Notes: [u(form.%qc.notes)], 78, left, space(8))])], t(%qf), [alert(shift)] I don't have a record of that form., comp(%qc, %qf), [alert(shift)] You are already in %qc., u(f.shift-workhorse, %qs, %qc, %qf))]
 
 --------------------------------------------------------------------------------
 -- +SHIFT WORKHORSE ------------------------------------------------------------
@@ -247,7 +247,7 @@ qn: post-shift health (bashing lethal agg)
 		u(%0/_form.offsets), 
 		[setq(e, 
 			ulocal(
-				[u(d.statfuncs)]/f.setstat.workhorse, 
+				[u(d.sfp)]/f.setstat.workhorse, 
 				%0, 
 				first(%i0, :), 
 				add(rest(u(%0/_[first(%i0, :)]), .), mul(rest(%i0, :), -1)), 
@@ -267,7 +267,7 @@ qn: post-shift health (bashing lethal agg)
 		%qo, 
 		[setq(e, 
 			ulocal(
-				[u(d.statfuncs)]/f.setstat.workhorse, 
+				[u(d.sfp)]/f.setstat.workhorse, 
 				%0, 
 				first(%i0, :), 
 				add(rest(u(%0/_[first(%i0, :)]), .), rest(%i0, :)), 
@@ -301,7 +301,7 @@ qn: post-shift health (bashing lethal agg)
 	[setq(h, iter(bashing lethal aggravated, u(%0/_health.%i0)))]
 	[setq(n, 
 		u(
-			[v(d.healthfrob)]/f.reverse-max-health, 				u(%0/_health.maximum), %qh
+			[v(d.health)]/f.reverse-max-health, 				u(%0/_health.maximum), %qh
 		)
 	)]
 
@@ -316,7 +316,7 @@ qn: post-shift health (bashing lethal agg)
 		[pemit(lcon(loc(%#), connect), 
 			[alert(shift)] 
 			[u(
-				[v(d.healthfrob)]/f.display-current-health-descr, 
+				[v(d.health)]/f.display-current-health-descr, 
 				%#, %qn, [u(%0/_health.maximum)]
 			)]
 		)]
@@ -328,7 +328,7 @@ qn: post-shift health (bashing lethal agg)
 
 --
 
-&f.shift-workhorse #3029=[iter(u(%0/_form.offsets), [setq(e, ulocal([u(d.statfuncs)]/f.setstat.workhorse, %0, first(%i0, :), add(rest(u(%0/_[first(%i0, :)]), .), mul(rest(%i0, :), -1)), offset))][if(t(%qe), @@(OK!), [alert(shift)] Error: %qe %r)], , @@)][setq(o, iter(u(form.%2.offsets), u(f.offset.calculate, %0, %i0)))][iter(%qo, [setq(e, ulocal([u(d.statfuncs)]/f.setstat.workhorse, %0, first(%i0, :), add(rest(u(%0/_[first(%i0, :)]), .), rest(%i0, :)), offset))][if(t(%qe), @@(OK!), [alert(shift)] Error: %qe %r)], , @@)][set(%0, _form.current:%2)][case(u(%0/_form.current), %qf, @@(OK), [alert(shift)] Error: Current form not set. %r)][set(%0, _form.offsets:%qo)][case(u(%0/_form.offsets), %qo, @@(OK!), [alert(shift)] Error: Actual offsets not remembered.)][pemit(lcon(loc(%#), connect), [alert(shift)] %N [if(hasattr(%#, oshift.%2), objeval(%#, u(oshift.%2)), u(form.%2.oshift))])][setq(h, iter(bashing lethal aggravated, u(%0/_health.%i0)))][setq(n, u([v(d.healthfrob)]/f.reverse-max-health, u(%0/_health.maximum), %qh))][if(neq(comp(%qh, %qn), 0), [iter(bashing lethal aggravated, set(%0, _health.%i0:[extract(%qn, inum(), 1)]))][pemit(lcon(loc(%#), connect), [alert(shift)] [u([v(d.healthfrob)]/f.display-current-health-descr, %#, %qn, [u(%0/_health.maximum)])])])][if(hasattr(%#, ashift.%2), trigger(%#/ashift.%2, %1))]
+&f.shift-workhorse #3029=[iter(u(%0/_form.offsets), [setq(e, ulocal([u(d.sfp)]/f.setstat.workhorse, %0, first(%i0, :), add(rest(u(%0/_[first(%i0, :)]), .), mul(rest(%i0, :), -1)), offset))][if(t(%qe), @@(OK!), [alert(shift)] Error: %qe %r)], , @@)][setq(o, iter(u(form.%2.offsets), u(f.offset.calculate, %0, %i0)))][iter(%qo, [setq(e, ulocal([u(d.sfp)]/f.setstat.workhorse, %0, first(%i0, :), add(rest(u(%0/_[first(%i0, :)]), .), rest(%i0, :)), offset))][if(t(%qe), @@(OK!), [alert(shift)] Error: %qe %r)], , @@)][set(%0, _form.current:%2)][case(u(%0/_form.current), %qf, @@(OK), [alert(shift)] Error: Current form not set. %r)][set(%0, _form.offsets:%qo)][case(u(%0/_form.offsets), %qo, @@(OK!), [alert(shift)] Error: Actual offsets not remembered.)][pemit(lcon(loc(%#), connect), [alert(shift)] %N [if(hasattr(%#, oshift.%2), objeval(%#, u(oshift.%2)), u(form.%2.oshift))])][setq(h, iter(bashing lethal aggravated, u(%0/_health.%i0)))][setq(n, u([v(d.health)]/f.reverse-max-health, u(%0/_health.maximum), %qh))][if(neq(comp(%qh, %qn), 0), [iter(bashing lethal aggravated, set(%0, _health.%i0:[extract(%qn, inum(), 1)]))][pemit(lcon(loc(%#), connect), [alert(shift)] [u([v(d.health)]/f.display-current-health-descr, %#, %qn, [u(%0/_health.maximum)])])])][if(hasattr(%#, ashift.%2), trigger(%#/ashift.%2, %1))]
 
 
 ================================================================================
