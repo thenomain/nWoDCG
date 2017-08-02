@@ -101,6 +101,7 @@ We'll see where this leads to.
 
 @fo me=&d.sfp [v( d.sfs )]=[search( name=Stat Function Prototype <sfp> )]
 @fo me=&d.healthfrob [v( d.sfs )]=[search( name=Health Frob <hf> )]
+@fo me=&d.dd [v( d.sfs )]=[search( name=Data Dictionary <dd> )]
 
 
 /* 
@@ -204,10 +205,9 @@ Assume 'human' unless otherwise noted. May seem ironic for Changelings.
 
 Let's figure out which forms you can take
 0: template
-1: sheet loc
-2: extras to search for
+1: sub-template (optional)
 
-returns: <form>.<form>.<form>, in a prettified format
+returns: <form>.<form>.<form>, in a prettified (spaced, capitalized) format
 
 */
 
@@ -222,8 +222,8 @@ returns: <form>.<form>.<form>, in a prettified format
 
 &f.forms.template.default [v( d.sfs )]=
 	strcat( 
-		setq( d, u( f.default-form, %0 )), 
-		setq( o, lattr( v( d.sdd )/%0.%2*.offsets )), 
+		setq( d, u( f.default-form, %0, %1 )), 
+		setq( o, lattr( v( d.sdd )/%0.%1*.offsets )), 
 		setq( w, sub( words( first( %qo ), . ), 1 )), 
 		setq( m, get( v( d.sdd )/d.%0.sort-order )), 
 // <form_name>:<sort order value>.[etc.]
@@ -247,11 +247,25 @@ returns: <form>.<form>.<form>, in a prettified format
 		)
 	)
 
+// -- 
 
 &sort.form-sort-order [v( d.sfs )]=sub( rest( %0, : ), rest( %1, : ))
 
+// -- test --
 // think u( v( d.sfs )/f.forms.template, werewolf )
-// think u( v( d.sfs )/f.forms.template, feral, *joko )
+// think u( v( d.sfs )/f.forms.template, feral, klinkerash )
+
+
+
+// -------------------------
+
+
+&f.sub-template [v( d.sfs )]=
+	udefault( f.sub-template.%0, 
+		@@( defaults to nothing ), 
+		%1 
+	)
+
 
 
 /*
@@ -262,22 +276,25 @@ Because of the '[.<extras>]' part.
 
 0: template (with_underscores)
 1: form (with_underscores)
-2: sheet loc
+2: sub-template (optional, with_underscores)
 
 */
 
 &f.forms.notes [v( d.sfs )]=
 	udefault( 
 		f.forms.notes.%0, 
-		u( f.forms.notes.default, %0.%1, %2 ), 
+		u( f.forms.notes.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
 		%1, %2 
 	)
 
+// --
+
 &f.forms.notes.default [v( d.sfs )]=get( v( d.sdd )/%0.notes )
 
+// -- test --
 // think u( v( d.sfs )/f.forms.notes, werewolf, gauru )
-// think u( v( d.sfs )/f.forms.notes, feral, war-beast, *joko )
-// think u( v( d.sfs )/f.forms.notes, feral, primal_beast, *thenomain )
+// think u( v( d.sfs )/f.forms.notes, feral, war-beast, klinkerash )
+// think u( v( d.sfs )/f.forms.notes, feral, primal_beast, klinkerash )
 
 /*
 --------------------------------------------------------------------------------
@@ -287,21 +304,21 @@ Because of the '[.<extras>]' part.
 
 0: template
 1: form
-2: sheet loc
+2: sub-template
 
 */
 
 &f.forms.offsets [v( d.sfs )]=
 	udefault( 
 		f.forms.offsets.%0, 
-		u( f.forms.offsets.default, %0.%1, %2 ), 
+		u( f.forms.offsets.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
 		%1, %2 
 	)
 
 &f.forms.offsets.default [v( d.sfs )]=u( v( d.sdd )/%0.offsets )
 
 // think u( v( d.sfs )/f.forms.offsets, werewolf, gauru )
-// think u( v( d.sfs )/f.forms.offsets, feral, war-beast, *joko )
+// think u( v( d.sfs )/f.forms.offsets, feral, primal_beast, klinkerash )
 
 /*
 --------------------------------------------------------------------------------
@@ -311,7 +328,7 @@ Because of the '[.<extras>]' part.
 
 0: template
 1: form
-2: sheet loc
+2: sheet loc (Yes! Really this time!)
 
 */
 
@@ -324,7 +341,7 @@ Because of the '[.<extras>]' part.
 
 &f.forms.oshift.default [v( d.sfs )]=u( v( d.sdd )/%0.oshift )
 
-// think u( v( d.sfs )/f.forms.oshift, werewolf, gauru )
+// think u( v( d.sfs )/f.forms.oshift, werewolf, gauru, *thenomain )
 // think u( v( d.sfs )/f.forms.oshift, feral, war-beast, *joko )
 
 /*
@@ -437,6 +454,7 @@ Kind of makes you wonder why I made getstat()/setstat(), doesn't it. Me too.
 
 s: sheet loc
 t: template
+u: sub-template/extras (if appropriate)
 c: current form or default for template if unset
 v: valid forms for sheet's template <- expand to include user-defined later
 f: full name of matched form
@@ -447,13 +465,14 @@ n: notes for form
 &c.shift/change [v( d.sfs )]=
 	strcat( 
 		setq( s, ulocal( v( d.sfp )/f.find-sheet, %# )), 
-		setq( t, edit( ulocal( %qs/_bio.template ), %b, _ )),
+		setq( t, edit( u( %qs/_bio.template ), %b, _ )),
+		setq( u, ulocal( f.sub-template, %qt, %qs )), 
 		setq( c, 
 			udefault( %qs/_form.current, 
-				ulocal( f.default-form, %qt, %qs )
+				u( f.default-form, %qt, %qu )
 			)
 		), 
-		setq( v, ulocal( f.forms.template, %qt, %qs )), 
+		setq( v, ulocal( f.forms.template, %qt, %qu )), 
 		setq( f, grab( .%qv, %0*, . )), 
 
 		case( 0, 
@@ -484,7 +503,7 @@ n: notes for form
 			u( .msg, shift, You are already in %qc form ), 
 
 // GOOD! Push data to "workhorse"
-			u( f.shift/change.workhorse, %qs, %qc, edit( %qf, %b, _ ), %qt )
+			u( f.shift/change.workhorse, %qs, %qc, edit( %qf, %b, _ ), %qt, %qu )
 		)
 	)
 
@@ -503,6 +522,7 @@ Notable line ("offset") from shiftstat
 1: form from
 2: form to
 3: template
+4: sub-template (optional)
 
 */
 
@@ -510,10 +530,10 @@ Notable line ("offset") from shiftstat
 	strcat( 
 // * Do The Things (registers are global)
 // if we want to critically fail because an error '%qe' is set, we do so here
-		u( f.shift/change.workhorse.from, %0, %1, %2, %3 ), 
-		u( f.shift/change.workhorse.to, %0, %1, %2, %3 ), 
-		u( f.shift/change.workhorse.set, %0, %1, %2, %3 ), 
-		u( f.shift/change.workhorse.announce, %0, %1, %2, %3 ), 
+		u( f.shift/change.workhorse.from, %0, %1, %2, %3, %4 ), 
+		u( f.shift/change.workhorse.to, %0, %1, %2, %3, %4 ), 
+		u( f.shift/change.workhorse.set, %0, %1, %2, %3, %4 ), 
+		u( f.shift/change.workhorse.announce, %0, %1, %2, %3, %4 ), 
 	)
 
 /*
@@ -568,13 +588,12 @@ e: errors to display
 
 &f.shift/change.workhorse.to [v( d.sfs )]=
 	iter( 
-		u( f.forms.offsets, %3, %2, %0 ), 
+		u( f.forms.offsets, %3, %2, %4 ), 
 		strcat( 
 			setq( a, ulocal( f.offset.calculate, %0, %i0 )), 
 			setq( o, cat( %qo, %qa )), 
 			setq( e, 
-				ulocal( 
-					[v( d.sfp )]/f.setstat.workhorse, 
+				ulocal( v( d.sfp )/f.setstat.workhorse, 
 					%0, 
 					first( %qa, : ), 
 					add( 
@@ -690,34 +709,67 @@ n: post-shift health (bashing lethal agg)
 
 Information about the templates and each form
 
-shift/info: Info about your current form
-shift/info <form>: Notes about that form
-shift/info <template or species>[/<form>]
+shift/info
+	Info about your current form
+shift/info <form>
+	Detailed notes about a form you can take
+shift/info <template or species>
+	Detailed notes about a template or species' forms
+shift/info <template or species>/<form>
+	Detailed notes about a specific template or species' form
 
 0: <arguments>
+a: number of arguments ('':0, 'xxx':1, 'xxx/xxx':2
 
 s: sheet loc
-t: template
+
+f: form to check
+t: template (or sub-template/species) to check
+u: sub-template (if appropriate)
+
 c: current form or default for template if unset
-// v: valid forms for sheet's template <- expand to include user-defined later
-// f: full name of matched form
-// n: notes for form
+v: valid forms for sheet's template <- expand to include user-defined later
+
+n: full name of matched form
 
 */
 
 &c.shift/info [v( d.sfs )]=
 	strcat( 
+		setq( a, words( %0, / )), 
 		setq( s, ulocal( v( d.sfp )/f.find-sheet, %# )), 
-		setq( t, edit( ulocal( %qs/_bio.template ), %b, _ )),
+
+		case( %qa, 
+// shift/info <template>/<form>
+			2, 
+			strcat( 
+				setq( f, rest( %0, / )), 
+				setq( t, trim( first( %0, / ))), 
+				setq( u, @@( I have no idea how we'll get this info ))
+			), 
+// shift/info [<form>]
+			strcat( 
+				setq( f, %0 ),
+				setq( t, u( %qs/_bio.template )), 
+				setq( u, ulocal( f.sub-template, %qt, %qs )), 
+			) 
+		), 
+		setq( f, edit( trim( %qf ), %b, _ )), 
+		setq( t, edit( %qt, %b, _ )), 
 		setq( c, 
 			udefault( %qs/_form.current, 
-				ulocal( f.default-form, %qt, %qs )
+				ulocal( f.default-form, %qt, %qu )
 			)
 		), 
- 		setq( v, ulocal( f.forms.template, %qt, %qs )), 
-// 		setq( f, grab( .%qv, %0*, . )), 
 
-		u( display.form.current, %qs, %qt, %qc, %qv )
+ 		setq( v, ulocal( f.forms.template, %qt, %qu )), 
+ 		setq( n, grab( .%qv, %qf*, . )), 
+
+		case( %qa, 
+			0, u( display.form.current, %qs, %qt, %qc, %qv ), 
+			1, TEST '*': f: %qf -- t: %qt -- n: %qn, 
+			TEST '*/*': f: %qf -- t: %qt -- n: %qn, 
+		)
 	)
 
 
@@ -778,17 +830,22 @@ c: current form or default for template if unset
 
 &help~IC_Commands~+shift #96=Shifting Forms~
 
-*** +shift is still in development ***%r %r
+	[ansi( h, +shift )]: Return what forms you can shift into, your 
+	current form, and any notes concerning it.%r%r
 
-[ansi( h, +shift )]: Return what forms you can shift into, your current form, and any notes concerning it.%r%r
+	[ansi( h, +shift <form> )]: Shift into that form. Most stat changes will be 
+	noted as offsets ( with original stats in parenthesis on your +sheet ). This 
+	will also report to the room the shift and any damage rollover that might 
+	happen because of it.%r%r
 
-[ansi( h, +shift <form> )]: Shift into that form. Most stat changes will be noted as offsets ( with original stats in parenthesis on your +sheet ). This will also report to the room the shift and any damage rollover that might happen because of it.%r%r
+	You may set your own shift messages using [ansi( h, &oshift.<form> )], and 
+	add code to your shifts by using [ansi( h, &ashift.<form> )]. Note that the 
+	former works like any @o* attribute ( odrop, osucc, etc. ) in that your name 
+	will be automatically prepended.%r%r
 
-You may set your own shift messages using [ansi( h, &oshift.<form> )], and add code to your shifts by using [ansi( h, &ashift.<form> )]. Note that the former works like any @o* attribute ( odrop, osucc, etc. ) in that your name will be automatically prepended.%r%r
-
-e.g. %r
-%b %b &oshift.dalu me=twists into a hideous 7' tall man.
-%b %b &ashift.dalu me=@set/quiet me=desc:It's hideous!
+	e.g. %r
+	%b %b &oshift.dalu me=twists into a hideous 7' tall man.
+	%b %b &ashift.dalu me=@set/quiet me=desc:It's hideous!
 
 */
 
@@ -906,25 +963,16 @@ For things that rely upon the species (offset and notes):
 -- Data: Feral: Setup ----------------------------------------------------------
 */
 
-&f.feral.get_species [v( d.sfs )]=edit( get( %0/_bio.species ), %b, _ )
+&f.sub-template.feral [v( d.sfs )]=edit( get( %0/_bio.species ), %b, _ )
 
 &f.forms.template.feral [v( d.sfs )]=
 	strcat( 
-		setq( s, ucstr( u( f.feral.get_species, %0 ))), 
-		setq( e, u( f.forms.template.default, feral, %0, %qs. )), 
+		setq( e, u( f.forms.template.default, feral, %0, %1. )), 
 		if( strlen( %qe ), 
 			%qe, 
 			#-1 Can't find shift data for that species 
 		)
 	)
-
-&f.forms.notes.feral [v( d.sfs )]=
-	u( f.forms.notes.default, feral.[u( f.feral.get_species, %1 )].%0, %1 )
-
-&f.forms.offsets.feral [v( d.sfs )]=
-	u( f.forms.offsets.default, feral.[u( f.feral.get_species, %1 )].%0, %1 )
-
-&f.forms.oshift.feral [v( d.sfs )]=u( f.forms.oshift.default, feral.%0, %1 )
 
 /*
 --------------------------------------------------------------------------------
@@ -1477,5 +1525,37 @@ Two names for apparently the same species.
 
 
 /*
-Svetlana pages: It's an Aspect that gives +1 to size and strength in primal and war forms. Ah, ok.
+
+--=-=-=-=-=-=-=-=-=-=-=-=-=-=-==--=-=-=
+
+***** Let's see if we can do this. *****
+
+Svetlana pages: Extraordinary Specimen
+
+Svetlana pages: It's an Aspect that gives +1 to size and strength in primal and 
+war forms. Ah, ok.
+
+--
+
+&aspect.extraordinary_specimen [v( d.sdd )]=
+	if( <form is war-form>, 
+		attribute.strength:+1 advantage.size:+1 
+	)
+
+Hm. How to make sure the above is only searched for with ferals? Should it be
+
+	&feral.aspect.extraordinary_specimen
+
+I suppose?
+
+So how do we meld this into offsets? Maybe...
+
+	&feral.war-form.aspect.extraordinary_specimen [v( d.sdd )]=
+		attribute.strength:+1 advantage.size:+1 
+
+But do we apply these before or after the main offsets?
+-> Before, probably, as they are far less likely to screw up derived traits
+-> The main trait that gets screwed up like this is 'speed'.
+
+
 */
