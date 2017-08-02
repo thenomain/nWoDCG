@@ -17,10 +17,10 @@ leave any confusing notes.
 ## NOTES #######################################################################
 
 On the Shift Data Dictionary, we will store everything in the following format:
-	&<template>[.<extra_data>].<form_name>.<directive>
+	&<template>[.<sub-template>].<form_name>.<directive>
 
-Each '<template>[.<extra_data>]' is a Form Packet. Each packet will have all of 
-the important data for shifting into any form.
+Each '<template>[.<sub-template>]' is a Form Packet. Each packet will have all 
+of the important data for shifting into any form.
 
 We use this partially as an index, so 'extra data' is important for limiting 
 which people can see which forms. For instance, in Feral, '<extra_data>' is 
@@ -29,6 +29,7 @@ to those forms.
 
 Per-player "packets" will also need to be built, likely set on their character 
 sheet object. It will probably be the above but with '&_form.' prefix.
+
 
 --------------------------------------------------------------------------------
 -- Directives ------------------------------------------------------------------
@@ -42,7 +43,8 @@ Offsets: <statpath>:[+/-]<value>
 
 Notes: Things you might want to know when in that form
 
-oshift: Default message to send to others in the room when shifting to that form
+Oshift: Default message to send to others in the room when shifting to that form
+
 
 --------------------------------------------------------------------------------
 -- Sort Order ------------------------------------------------------------------
@@ -61,6 +63,34 @@ Whatever is under '&d.<template>.default-form' on the Shift Data Dictionary is:
 	a) always available
 	b) always first on the order of valid forms
 	c) has no offsets: this is our baseline 'human' form
+
+
+--------------------------------------------------------------------------------
+-- Aspects ---------------------------------------------------------------------
+
+There is one aspect that alters the final form: 
+	Extraordinary Specimen: Gives +1 to size and strength in primal beast and 
+	war-beast forms. 
+
+There may be more.
+
+We DO NOT do anything with this at the moment, but here are some notes so that 
+we can hopefully add it later on.
+
+Hm. How to make sure the above is only searched for with ferals? Should it be
+
+	&feral.aspect.extraordinary_specimen
+
+I suppose?
+
+So how do we meld this into offsets? Maybe...
+
+	&feral.war-form.aspect.extraordinary_specimen [v( d.sdb )]=
+		attribute.strength:+1 advantage.size:+1 
+
+But do we apply these before or after the main offsets?
+-> Before, probably, as they are far less likely to screw up derived traits
+-> The main trait that gets screwed up like this is 'speed'.
 
 
 ################################################################################
@@ -85,14 +115,10 @@ Current form ('null' = Human or look up):
 &_form.current <sheet>: <current form>
 &_form.offsets <sheet>: <statpath>:+/-<offset>
 
-	a list of what was *actually* set on the sheet, due to special rules
-	that attributes shouldn't be offset lower than 1.
+This is a list of what was *actually* set on the sheet, due to special rules 
+that attributes shouldn't be offset lower than 1.
 
-The "valid forms" is typically only for non-Werewolves who may change into new 
-forms. They must(?)/should(?) have a &form.werewolf.<form name>.<...> set on 
-the object(?) or &_form.<name>.<...> on themselves(?).
-
-We'll see where this leads to.
+We may later also use '&_form.valid-forms' as a way to track non-standard lists.
 
 
 ================================================================================
@@ -100,8 +126,286 @@ We'll see where this leads to.
 */
 
 @fo me=&d.sfp [v( d.sfs )]=[search( name=Stat Function Prototype <sfp> )]
-@fo me=&d.healthfrob [v( d.sfs )]=[search( name=Health Frob <hf> )]
 @fo me=&d.dd [v( d.sfs )]=[search( name=Data Dictionary <dd> )]
+@fo me=&d.healthfrob [v( d.sfs )]=[search( name=Health Frob <hf> )]
+
+
+/*
+================================================================================
+== FUNCTIONS ===================================================================
+
+--------------------------------------------------------------------------------
+-- Dot Functions ---------------------------------------------------------------
+*/
+
+&.msg [v( d.sfs )]=ansi( n, |, h, %0, n, |%b%1 )
+&.sign [v( d.sfs )]=setinter( strtrunc( %0, 1 ), + - )
+
+/*
+--------------------------------------------------------------------------------
+-- Default Form ----------------------------------------------------------------
+
+Assume 'human' unless otherwise noted. May seem ironic for Changelings.
+
+0: template
+
+*/
+
+&f.default-form [v( d.sfs )]=udefault( v( d.sdb )/d.%0.default-form, Human )
+
+/*
+--------------------------------------------------------------------------------
+-- Valid Forms (sorted) --------------------------------------------------------
+
+&<template>[.<extras>].<form_name>.<data_type>: xxxx
+
+Let's figure out which forms you can take
+0: template
+1: sub-template (optional)
+
+returns: <form>.<form>.<form>, in a prettified (spaced, capitalized) format
+
+*/
+
+&f.forms.template [v( d.sfs )]=
+	udefault( 
+		f.forms.template.%0, 
+		u( f.forms.template.default, %0, %1 ), 
+		%1 
+	)
+
+// -- 
+
+&f.forms.template.default [v( d.sfs )]=
+	strcat( 
+		setq( d, u( f.default-form, %0, %1 )), 
+		setq( o, lattr( v( d.sdb )/%0.%1*.offsets )), 
+		setq( w, sub( words( first( %qo ), . ), 1 )), 
+		setq( m, get( v( d.sdb )/d.%0.sort-order )), 
+// <form_name>:<sort order value>.[etc.]
+		setq( p, 
+			iter( %qo, 
+				strcat( 
+					setr( p, elements( %i0, %qw, . )), 
+					:, 
+					match( %qm, %qp, . ) 
+				), 
+				, . 
+			)
+		), 
+		setq( p, sortby( sort.form-sort-order, %qp, ., %b )), 
+// display only if non-default forms are found
+		if( strlen( %qp ), 
+			iter( %qd %qp, 
+				titlestr( edit( first( %i0, : ), _, %b )), 
+				, . 
+			)
+		)
+	)
+
+// -- 
+
+&sort.form-sort-order [v( d.sfs )]=sub( rest( %0, : ), rest( %1, : ))
+
+// -- test --
+// think u( v( d.sfs )/f.forms.template, werewolf )
+// think u( v( d.sfs )/f.forms.template, feral, klinkerash )
+
+/*
+--------------------------------------------------------------------------------
+-- Sub-Template (if any) -------------------------------------------------------
+
+0: template
+1: sheet dbref
+
+*/
+
+&f.sub-template [v( d.sfs )]=
+	udefault( f.sub-template.%0, 
+		@@( defaults to nothing ), 
+		%1 
+	)
+
+/*
+--------------------------------------------------------------------------------
+-- Form: Notes -----------------------------------------------------------------
+
+Because of the '[.<extras>]' part.
+
+0: template (with_underscores)
+1: form (with_underscores)
+2: sub-template (optional, with_underscores)
+
+*/
+
+&f.forms.notes [v( d.sfs )]=
+	udefault( 
+		f.forms.notes.%0, 
+		u( f.forms.notes.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
+		%1, %2 
+	)
+
+// --
+
+&f.forms.notes.default [v( d.sfs )]=get( v( d.sdb )/%0.notes )
+
+// -- test --
+// think u( v( d.sfs )/f.forms.notes, werewolf, gauru )
+// think u( v( d.sfs )/f.forms.notes, feral, war-beast, klinkerash )
+// think u( v( d.sfs )/f.forms.notes, feral, primal_beast, klinkerash )
+
+/*
+--------------------------------------------------------------------------------
+-- Form: Offsets ---------------------------------------------------------------
+
+Because of the '[.<extras>]' part.
+
+0: template
+1: form
+2: sub-template
+
+*/
+
+&f.forms.offsets [v( d.sfs )]=
+	udefault( 
+		f.forms.offsets.%0, 
+		u( f.forms.offsets.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
+		%1, %2 
+	)
+
+&f.forms.offsets.default [v( d.sfs )]=u( v( d.sdb )/%0.offsets )
+
+// think u( v( d.sfs )/f.forms.offsets, werewolf, gauru )
+// think u( v( d.sfs )/f.forms.offsets, feral, primal_beast, klinkerash )
+
+/*
+--------------------------------------------------------------------------------
+-- Form: Oshift ----------------------------------------------------------------
+
+Because of the '[.<extras>]' part.
+
+0: template
+1: form
+2: sheet loc (Yes! Really this time!)
+
+*/
+
+&f.forms.oshift [v( d.sfs )]=
+	udefault( 
+		f.forms.oshift.%0, 
+		u( f.forms.oshift.default, %0.%1, %2 ), 
+		%1, %2 
+	)
+
+&f.forms.oshift.default [v( d.sfs )]=u( v( d.sdb )/%0.oshift )
+
+// think u( v( d.sfs )/f.forms.oshift, werewolf, gauru, *thenomain )
+// think u( v( d.sfs )/f.forms.oshift, feral, war-beast, *joko )
+
+/*
+--------------------------------------------------------------------------------
+-- Calculate Offsets -----------------------------------------------------------
+
+Calculate the proper offset: Attributes no lower than 1, others no lower than 0
+
+If Increases:
+	You can always increase. I've yet to see a limit on this in the RPG rules.
+
+If Decreases:
+	Cannot go below 0 or 1. So offset by: 
+		-[min( |<amount to reduce>|, <stat> - <lowest possible value of stat> )]
+	which for attributes is...
+		-[min( abs( <reduction> ), sub( <stat>, 1 ))]
+
+If Set Equals:
+	Cannot be 
+
+--
+
+How much can we lower a trait's value? We can't reduce the total or the 
+permanent value below 1 (Attributes) or 0 (others).
+
+Attribute:
+3.-2: Can be adjusted down by (3 - 2 - 1) = 0, or (3 - 1) = 2, so: 0
+3.2 : Can be adjusted down by at most (3 + 2 - 1) = 4, or (3 - 1) = 2, so: 2
+
+Other: 
+3.-2: Can be adjusted down by (3 - 2 - 0) = 1, or (3 - 0) = 3, so: 1
+3.2 : Can be adjusted down by (3 + 2 - 0) = 5, or (3 - 0) = 3, so: 3
+
+So the most we can reduce a stat is:
+	min( <total value> - <lowest value>, <permanent value> - <lowest value> )
+Or:
+	-[min( sub( %qc, %qm ), sub( first( %qs, . ), %qm ))]
+
+
+--
+
+0: sheet dbref
+1: sheet statpath:value to increase (+#)/decrease (-#)/set to (#)
+
+p: statpath, sheet version (from %1)
+v: value to increase/decrease (from %1)
+
+m: minumum that stat can be (attr: 1, others: 0)
+s: stat.from.sheet
+c: stat's current total value (perm + offset)
+l: lowest negative offset that we can adjust on this stat (value is negative)
+
+x: math if %q2 wants to set to a set value
+o: calculated offset
+
+*/
+
+&f.offset.calculate [v( d.sfs )]=
+//	localize( 
+	strcat( 
+		setq( p, first( %1, : )), 
+		setq( v, rest( %1, : )), 
+
+// qm: minimum stat can be; pretty straightforward, room here to expand
+		setq( m, 
+			switch( %1,
+				attribute.*, 1, 
+				0
+			)
+		), 
+
+// qs: stat from sheet - qc: current total stat - ql: lowest the offset can be
+		setq( s, u( %0/_%qp )), 
+		setq( c, ladd( %qs, . )), 
+		setq( l, -[min( sub( %qc, %qm ), sub( first( %qs, . ), %qm ))] ), 
+
+// qx: calculate actual offset part one: if +/-# leave alone, else do math
+		setq( x, 
+			if( strlen( u( .sign, %qv )), 
+				%qv, 
+				sub( %qv, first( %qs, . ))
+			)
+		), 
+
+// qo: calculate actual offset from requested offset
+		setq( o, 
+			case( u( .sign, %qx ), 
+				+, %qx, 
+// .. subtracting offset - cannot be lower than minimum offset (%ql)
+				-, max( %qx, %ql ) , 
+				+%qx
+			)
+		), 
+
+// return <statpath>:<offset> - if total offset = 0, return offset of 'null'
+		%qp:[if( neq( %qo, 0 ), %qo )] 
+	)
+//	)
+
+/* -- Tests --
+think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:-5 )
+think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:+5 )
+think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:2 )
+think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:0 )
+think u( v( d.sfs )/f.offset.calculate, %#, special.species_factor:7 )
+*/
 
 
 /* 
@@ -171,262 +475,9 @@ m: matched switch
 @set [v( d.sfs )]/c.shift=no_parse
 
 
-
-
-
 /*
 ================================================================================
-== FUNCTIONS ===================================================================
-
---------------------------------------------------------------------------------
--- Dot Functions ---------------------------------------------------------------
-*/
-
-&.msg [v( d.sfs )]=ansi( n, |, h, %0, n, |%b%1 )
-
-
-/*
---------------------------------------------------------------------------------
--- Default Form ----------------------------------------------------------------
-
-Assume 'human' unless otherwise noted. May seem ironic for Changelings.
-
-0: template
-
-*/
-
-&f.default-form [v( d.sfs )]=udefault( v( d.sdd )/d.%0.default-form, Human )
-
-/*
---------------------------------------------------------------------------------
--- Valid Forms (sorted) --------------------------------------------------------
-
-&<template>[.<extras>].<form_name>.<data_type>: xxxx
-
-Let's figure out which forms you can take
-0: template
-1: sub-template (optional)
-
-returns: <form>.<form>.<form>, in a prettified (spaced, capitalized) format
-
-*/
-
-&f.forms.template [v( d.sfs )]=
-	udefault( 
-		f.forms.template.%0, 
-		u( f.forms.template.default, %0, %1 ), 
-		%1 
-	)
-
-// -- 
-
-&f.forms.template.default [v( d.sfs )]=
-	strcat( 
-		setq( d, u( f.default-form, %0, %1 )), 
-		setq( o, lattr( v( d.sdd )/%0.%1*.offsets )), 
-		setq( w, sub( words( first( %qo ), . ), 1 )), 
-		setq( m, get( v( d.sdd )/d.%0.sort-order )), 
-// <form_name>:<sort order value>.[etc.]
-		setq( p, 
-			iter( %qo, 
-				strcat( 
-					setr( p, elements( %i0, %qw, . )), 
-					:, 
-					match( %qm, %qp, . ) 
-				), 
-				, . 
-			)
-		), 
-		setq( p, sortby( sort.form-sort-order, %qp, ., %b )), 
-// display only if non-default forms are found
-		if( strlen( %qp ), 
-			iter( %qd %qp, 
-				titlestr( edit( first( %i0, : ), _, %b )), 
-				, . 
-			)
-		)
-	)
-
-// -- 
-
-&sort.form-sort-order [v( d.sfs )]=sub( rest( %0, : ), rest( %1, : ))
-
-// -- test --
-// think u( v( d.sfs )/f.forms.template, werewolf )
-// think u( v( d.sfs )/f.forms.template, feral, klinkerash )
-
-
-
-// -------------------------
-
-
-&f.sub-template [v( d.sfs )]=
-	udefault( f.sub-template.%0, 
-		@@( defaults to nothing ), 
-		%1 
-	)
-
-
-
-/*
---------------------------------------------------------------------------------
--- Form: Notes -----------------------------------------------------------------
-
-Because of the '[.<extras>]' part.
-
-0: template (with_underscores)
-1: form (with_underscores)
-2: sub-template (optional, with_underscores)
-
-*/
-
-&f.forms.notes [v( d.sfs )]=
-	udefault( 
-		f.forms.notes.%0, 
-		u( f.forms.notes.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
-		%1, %2 
-	)
-
-// --
-
-&f.forms.notes.default [v( d.sfs )]=get( v( d.sdd )/%0.notes )
-
-// -- test --
-// think u( v( d.sfs )/f.forms.notes, werewolf, gauru )
-// think u( v( d.sfs )/f.forms.notes, feral, war-beast, klinkerash )
-// think u( v( d.sfs )/f.forms.notes, feral, primal_beast, klinkerash )
-
-/*
---------------------------------------------------------------------------------
--- Form: Offsets ---------------------------------------------------------------
-
-Because of the '[.<extras>]' part.
-
-0: template
-1: form
-2: sub-template
-
-*/
-
-&f.forms.offsets [v( d.sfs )]=
-	udefault( 
-		f.forms.offsets.%0, 
-		u( f.forms.offsets.default, %0.[if( strlen( %2 ), %2. )]%1 ), 
-		%1, %2 
-	)
-
-&f.forms.offsets.default [v( d.sfs )]=u( v( d.sdd )/%0.offsets )
-
-// think u( v( d.sfs )/f.forms.offsets, werewolf, gauru )
-// think u( v( d.sfs )/f.forms.offsets, feral, primal_beast, klinkerash )
-
-/*
---------------------------------------------------------------------------------
--- Form: Oshift ----------------------------------------------------------------
-
-Because of the '[.<extras>]' part.
-
-0: template
-1: form
-2: sheet loc (Yes! Really this time!)
-
-*/
-
-&f.forms.oshift [v( d.sfs )]=
-	udefault( 
-		f.forms.oshift.%0, 
-		u( f.forms.oshift.default, %0.%1, %2 ), 
-		%1, %2 
-	)
-
-&f.forms.oshift.default [v( d.sfs )]=u( v( d.sdd )/%0.oshift )
-
-// think u( v( d.sfs )/f.forms.oshift, werewolf, gauru, *thenomain )
-// think u( v( d.sfs )/f.forms.oshift, feral, war-beast, *joko )
-
-/*
---------------------------------------------------------------------------------
--- Calculate Offsets -----------------------------------------------------------
-
-Calculate the proper offset: Attributes no lower than 1, others no lower than 0
-
-If Increases:
-	You can always increase. I've yet to see a limit on this in the RPG rules.
-
-If Decreases:
-	Cannot go below 1. So offset by: 
-		-[min( |<amount to reduce>|, <stat> - <lowest possible value of stat> )]
-	which for attributes is...
-		-[min( abs( <reduction> ), sub( <stat>, 1 ))]
-
-0: sheet dbref
-1: sheet statpath:value to increase (+#)/decrease (-#)/set to (#)
-
-q1: sheet statpath
-q2: value to increase/decrease
-q3: + if add, - if reduce, <other> if neither
-
-qm: minumum that stat can be (attr: 1, others: 0)
-qs: stat.from.sheet
-qc: stat's current total value (perm + offset)
-qx: math if %q2 wants to set to a set value
-qo: calculated offset
-qt: total new offset
-
-*/
-
-&f.offset.calculate [v( d.sfs )]=
-	localize( strcat( 
-		setq( 1, first( %1, : )), 
-		setq( 2, rest( %1, : )), 
-		setq( 3, strtrunc( %q2, 1 )), 
-
-// qs: stat from sheet - qc: current total stat
-		setq( s, u( %0/_%q1 )), 
-		setq( c, ladd( %qs, . )), 
-
-// qm: minimum stat can be; pretty straightforward, room here to expand
-		setq( m, 
-			switch( %1,
-				attribute.*, 1, 
-				0
-			)
-		), 
-// qo: calculate actual offset part one: if +/-# leave alone, else do math
-		setq( x, 
-			if( strlen( setinter( %q3, + - )), 
-				%q2, 
-				sub( %q2, first( %qs, . ))
-			)
-		), 
-
-// qo: calculate actual offset from requested offset
-		setq( o, 
-			if( gte( %qx, 0 ), 
-				%qx, 
-// .. subtracting offset - cannot be lower than Min For Stat (%qm)
-				-[min( abs( %qx ), sub( %qc, %qm ))] 
-			)
-		), 
-
-// qt: total ( new ) offset
-		setq( t, add( rest( %qs, . ), %qo )), 
-
-// return <statpath>:<offset> - if total offset = 0, return offset of 'null'
-		%q1:[if( neq( %qt, 0 ), %qt )]
-	))
-
-/* -- Tests --
-think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:-5 )
-think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:+5 )
-think u( v( d.sfs )/f.offset.calculate, %#, attribute.strength:5 )
-think u( v( d.sfs )/f.offset.calculate, %#, special.species_Factor:7 )
-*/
-
-
-/*
-================================================================================
-== COMMAND: SHIFT/CHANGE (default) =============================================
+== SHIFT/CHANGE ================================================================
 
 This is the default switch when used with an argument. e.g.:
 	shift gauru
@@ -490,9 +541,9 @@ n: notes for form
 				)
 			), 
 
-// if just 'shift/change', show basic 'shift/info' forms
+// if no arguments, show basic 'shift/info' forms
 			strlen( %0 ), 
-			u( display.form.current, %qs, %qt, %qc, %qv ), 
+			u( display.form.current, %qs, %qt, %qc, %qv, %qu ), 
 
 // is matched form valid?
 			t( %qf ), 
@@ -503,7 +554,9 @@ n: notes for form
 			u( .msg, shift, You are already in %qc form ), 
 
 // GOOD! Push data to "workhorse"
-			u( f.shift/change.workhorse, %qs, %qc, edit( %qf, %b, _ ), %qt, %qu )
+			u( f.shift/change.workhorse, 
+				%qs, %qc, edit( %qf, %b, _ ), %qt, %qu 
+			)
 		)
 	)
 
@@ -511,12 +564,18 @@ n: notes for form
 --------------------------------------------------------------------------------
 -- Shift/Change Workhorse  -----------------------------------------------------
 
-Notable line ("offset") from shiftstat
-		of*, 
-		ulocal( f.setstat.workhorse, 
-			<sheet dbref>, <statpath>, <new offset>, offset
-		), 
+Notable line ("offset") from the 'shiftstat' code:
+	of*, 
+	ulocal( f.setstat.workhorse, 
+		<sheet dbref>, <statpath>, <new offset>, offset
+	), 
 
+So we will kind of abuse this directly. We could also:
+	setstat( <target>/<stat>=<new offset>, offset )
+
+...but we already do a great deal of the checking beforehand.
+
+--
 
 0: sheet dbref
 1: form from
@@ -538,7 +597,7 @@ Notable line ("offset") from shiftstat
 
 /*
 --------------------------------------------------------------------------------
--- Shift Workhorse: From -------------------------------------------------------
+-- Shift/Change Workhorse: From ------------------------------------------------
 
 Unset offsets recorded on '&_form.offsets'.
 
@@ -572,23 +631,23 @@ e: errors to display
 
 /*
 --------------------------------------------------------------------------------
--- Shift Workhorse: To ---------------------------------------------------------
+-- Shift/Change Workhorse: To --------------------------------------------------
 
 From time to time, we need to calculate a final value that relies on other 
 changed values. Because of this, our flow must be:
 	for each item:
 		calculate final value
 		set final value
-	
-o: offsets to set on '&_form.offsets'
-i: immediate offset to set
+
+a: active offset for this round of iter().
+o: offsets to set on '&_form.offsets', later in 'set'.
 e: errors to display
 
 */
 
 &f.shift/change.workhorse.to [v( d.sfs )]=
 	iter( 
-		u( f.forms.offsets, %3, %2, %4 ), 
+		ulocal( f.forms.offsets, %3, %2, %4 ), 
 		strcat( 
 			setq( a, ulocal( f.offset.calculate, %0, %i0 )), 
 			setq( o, cat( %qo, %qa )), 
@@ -612,7 +671,7 @@ e: errors to display
 
 /*
 --------------------------------------------------------------------------------
--- Shift Workhorse: Set --------------------------------------------------------
+-- Shift/Change Workhorse: Set -------------------------------------------------
 */
 
 &f.shift/change.workhorse.set [v( d.sfs )]=
@@ -623,19 +682,20 @@ e: errors to display
 			u( .msg, shift, Error: Current form not '%qf' )
 		), 
 		set( %0, _form.offsets:%qo ), 
-/*** cannot guarantee that final offsets equal desired offsets ***
+
+/*
+// *** cannot guarantee that final offsets equal desired offsets ***
 		case( u( %0/_form.offsets ), 
 			%qo, @@( OK! ), 
 			u( .msg, shift, Error: Current form's offsets not correct )
 		), 
 */
-	)
 
-// think u( v( d.sfs )/f.shift/change.workhorse.set, *thenomain, x, war-beast, feral )
+	)
 
 /*
 --------------------------------------------------------------------------------
--- Shift Workhorse: Announce ---------------------------------------------------
+-- Shift/Change Workhorse: Announce --------------------------------------------
 
 w: which oshift should we announce?
 
@@ -661,10 +721,9 @@ w: which oshift should we announce?
 		if( hasattr( %#, ashift.%2 ), trigger( %#/ashift.%2, %1 )), 
 	)
 
-
 /*
 --------------------------------------------------------------------------------
--- Shift Workhorse: Health -----------------------------------------------------
+-- Shift/Change Workhorse: Health ----------------------------------------------
 
 h: pre-shift health (bashing lethal agg)
 n: post-shift health (bashing lethal agg)
@@ -702,7 +761,6 @@ n: post-shift health (bashing lethal agg)
 	)
 
 
-
 /*
 ================================================================================
 == SHIFT/INFO ==================================================================
@@ -717,6 +775,8 @@ shift/info <template or species>
 	Detailed notes about a template or species' forms
 shift/info <template or species>/<form>
 	Detailed notes about a specific template or species' form
+
+--
 
 0: <arguments>
 a: number of arguments ('':0, 'xxx':1, 'xxx/xxx':2
@@ -768,7 +828,7 @@ n: full name of matched form
 		case( %qa, 
 			0, u( display.form.current, %qs, %qt, %qc, %qv ), 
 			1, TEST '*': f: %qf -- t: %qt -- n: %qn, 
-			TEST '*/*': f: %qf -- t: %qt -- n: %qn, 
+			TEST '*/*': f: %qf -- t: %qt -- n: %qn 
 		)
 	)
 
@@ -803,22 +863,50 @@ n: full name of matched form
 	)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* --=-=-=-=-=-=-=-=-=--=-=-=-=-=-==
 
-	think strcat( 
-		q0:, %b, setr( 0, trim( %1 )), %r, 
-		
-	); 
 
-// display: valid shift groups
-	@break strlen( %q0 )={ 
-		@pemit %#=u( .msg, shift/info, 
-			strcat( 
-				The following groups have forms:, %b, 
-				[regmatchi( lattr( v( d.sdd )/*.*.offsets ), (.*).(.*).offsets, a a a )] -- %qa
-			)
-		)
-	}; 
+
+
+
+
+
+
+
+// A VISUAL LIST OF ALL TEMPLATE[.SUB-TEMPLATE] SHIFTERS
+
+think 
+	iter( 
+		edit( 
+			setunion( 
+				iter( 
+					lattr( v( d.sdb )/*.*.offsets ), 
+					elements( %i0, lnum( 1, sub( words( %i0, . ), 2 )), . )
+				), 
+			), 
+			%b, |, _, %b 
+		), 
+		iter( %i0, titlestr( %i0 ), ., . ), 
+		|, |
+	)
+
+
+
 
 -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-= */
 
@@ -874,17 +962,17 @@ would be fine.
 == Data: Setup =================================================================
 */
 
-@create Shift Data Dictionary <sdd>
-@fo me=&d.sdd me=[search( name=Shift Data Dictionary <sdd> )]
-@fo me=&d.sfs Shift Data Dictionary <sdd>=
+@create Shift Database <sdb>
+@fo me=&d.sdb me=[search( name=Shift Database <sdb> )]
+@fo me=&d.sfs Shift Database <sdb>=
 	[search( name=Shifting Forms System <sfs> )]
-@fo me=&d.sdd [v( d.sfs )]=[search( name=Shift Data Dictionary <sdd> )]
+@fo me=&d.sdb [v( d.sfs )]=[search( name=Shift Database <sdb> )]
 
-@desc [v( d.sdd )]=
+@desc [v( d.sdb )]=
 	This holds all of the stat offsets, notes, and other data on each and every 
 	form. It is not an exhaustible list.
 
-@fo me=@parent [v( d.sdd )]=[v( d.codp )]
+@fo me=@parent [v( d.sdb )]=[v( d.codp )]
 
 
 /*
@@ -895,56 +983,55 @@ General forms n' stuff. This one is easy.
 
 */
 
-&prefix.werewolf [v( d.sdd )]=werewolf.
+&prefix.werewolf [v( d.sdb )]=werewolf.
 
-&d.werewolf.default-form [v( d.sdd )]=Hishu
+&d.werewolf.default-form [v( d.sdb )]=Hishu
 
-&d.werewolf.sort-order [v( d.sdd )]=hishu.dalu.gauru.urshal.urhan
+&d.werewolf.sort-order [v( d.sdb )]=hishu.dalu.gauru.urshal.urhan
 
 // -- 
 
-&werewolf.hishu.offsets [v( d.sdd )]=@@( nothing special )
-&werewolf.hishu.oshift [v( d.sdd )]=returns back to %p human (hishu) form.
+&werewolf.hishu.oshift [v( d.sdb )]=returns back to %p human (hishu) form.
 
-&werewolf.dalu.offsets [v( d.sdd )]=
+&werewolf.dalu.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.stamina:+1 
 	attribute.manipulation:-1 
 	advantage.size:+1
-&werewolf.dalu.notes [v( d.sdd )]=Lunacy (+4 to resist), +2 perception
-&werewolf.dalu.oshift [v( d.sdd )]=changes to %p near-man (dalu) form.
+&werewolf.dalu.notes [v( d.sdb )]=Lunacy (+4 to resist), +2 perception
+&werewolf.dalu.oshift [v( d.sdb )]=changes to %p near-man (dalu) form.
 
-&werewolf.gauru.offsets [v( d.sdd )]=
+&werewolf.gauru.offsets [v( d.sdb )]=
 	attribute.strength:+3 
 	attribute.dexterity:+1 
 	attribute.stamina:+2 
 	advantage.size:+2
-&werewolf.gauru.notes [v( d.sdd )]=
+&werewolf.gauru.notes [v( d.sdb )]=
 	Rage, Lunacy, ignore wound penalties, no rolls for unconsciousness, 
 	lethal damage with claws (+1) and bite (+2), +1 for natural armor, 
 	fail most mental/social rolls, -2 for Death Rage rolls, +3 perception
-&werewolf.gauru.oshift [v( d.sdd )]=
+&werewolf.gauru.oshift [v( d.sdb )]=
 	changes to %p gauru war-form. [switch(rand(10), 0, Rar!)]
 
-&werewolf.urshal.offsets [v( d.sdd )]=
+&werewolf.urshal.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+2 
 	attribute.stamina:+2 
 	attribute.manipulation:-3 
 	advantage.size:+1 
 	special.species_factor:+3
-&werewolf.urshal.notes [v( d.sdd )]=
+&werewolf.urshal.notes [v( d.sdb )]=
 	Lunacy (+2 to resist), lethal damage with bite (+2), +3 perception
-&werewolf.urshal.oshift [v( d.sdd )]=changes to %p near-wolf (urshal) form.
+&werewolf.urshal.oshift [v( d.sdb )]=changes to %p near-wolf (urshal) form.
 
-&werewolf.urhan.offsets [v( d.sdd )]=
+&werewolf.urhan.offsets [v( d.sdb )]=
 	attribute.dexterity:+2 
 	attribute.stamina:+1 
 	advantage.size:-1
 	special.species_factor:+3 
-&werewolf.urhan.notes [v( d.sdd )]=
+&werewolf.urhan.notes [v( d.sdb )]=
 	Lethal damage with bite (+2), +4 perception
-&werewolf.urhan.oshift [v( d.sdd )]=changes to %p wolf (urhan) form.
+&werewolf.urhan.oshift [v( d.sdb )]=changes to %p wolf (urhan) form.
 
 
 /*
@@ -953,11 +1040,15 @@ General forms n' stuff. This one is easy.
 
 The Feral form data is going to be stored in two main ways.
 
-For things that are true for all forms: 
+For things that are true for all forms (oshift): 
 	&feral.<form>.<directive>
 
 For things that rely upon the species (offset and notes):
 	&feral.<species>.<form>.<directive>
+
+I know that "species" is a subset of "breed", but for Ferals, there is no 
+real need to keep track of breed for shifting reasons, so we're ignoring it 
+for now.
 
 --------------------------------------------------------------------------------
 -- Data: Feral: Setup ----------------------------------------------------------
@@ -979,24 +1070,24 @@ For things that rely upon the species (offset and notes):
 -- Data: Feral: General --------------------------------------------------------
 */
 
-&prefix.feral [v( d.sdd )]=
+&prefix.feral [v( d.sdb )]=
 	feral.dire_beast. feral.man-guise. feral.primal_beast. feral.throwback. 
 	feral.war-beast.
 
-&d.feral.sort-order [v( d.sdd )]=
+&d.feral.sort-order [v( d.sdb )]=
 	man-guise.throwback.war-beast.dire_beast.primal_beast
 
-&d.feral.default-form [v( d.sdd )]=Man-Guise
+&d.feral.default-form [v( d.sdb )]=Man-Guise
 
-&feral.man-guise.oshift [v( d.sdd )]=
+&feral.man-guise.oshift [v( d.sdb )]=
 	returns back to %p human (man-guise) form.
-&feral.throwback.oshift [v( d.sdd )]=
+&feral.throwback.oshift [v( d.sdb )]=
 	changes to %p near-man (throwback) form.
-&feral.war-beast.oshift [v( d.sdd )]=
+&feral.war-beast.oshift [v( d.sdb )]=
 	changes to %p war-beast form. [switch( rand( 10 ), 0, %(!!!%) )]
-&feral.dire_beast.oshift [v( d.sdd )]=
+&feral.dire_beast.oshift [v( d.sdb )]=
 	changes to %p dire beast form.
-&feral.primal_beast.oshift [v( d.sdd )]=
+&feral.primal_beast.oshift [v( d.sdb )]=
 	changes to %p primal beast form.
 
 
@@ -1005,7 +1096,7 @@ For things that rely upon the species (offset and notes):
 == DATA: FERAL: BASTET =========================================================
 */
 
-&prefix.feral_bastet [v( d.sdd )]=
+&prefix.feral_bastet [v( d.sdb )]=
 	feral.bagrasha. feral.balam. feral.bubasti. feral.cait_sith. feral.hatara. 
 	feral.klinkerash. feral.qualm'a_ni. feral.rajanya.
 
@@ -1014,21 +1105,21 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Rajanya (Tiger) -----------------------------------------------------
 */
 
-&feral.rajanya.war-beast.offsets [v( d.sdd )]=
+&feral.rajanya.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+5 
 	attribute.dexterity:+2 
 	attribute.stamina:+5 
 	advantage.size:8 
-&feral.rajanya.war-beast.notes [v( d.sdd )]=
+&feral.rajanya.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.rajanya.primal_beast.offsets [v( d.sdd )]=
+&feral.rajanya.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+3 
 	attribute.dexterity:+2 
 	attribute.stamina:+3 
 	advantage.size:+2 
 	special.species_factor:8 
-&feral.rajanya.primal_beast.notes [v( d.sdd )]=
+&feral.rajanya.primal_beast.notes [v( d.sdb )]=
 	+3 to perception rolls
 
 /*
@@ -1036,21 +1127,21 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Bubasti -------------------------------------------------------------
 */
 
-&feral.bubasti.throwback.offsets [v( d.sdd )]=
+&feral.bubasti.throwback.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
-&feral.bubasti.throwback.notes [v( d.sdd )]=
+&feral.bubasti.throwback.notes [v( d.sdb )]=
 	+5 to perception rolls
 
-&feral.bubasti.primal_beast.offsets [v( d.sdd )]=
+&feral.bubasti.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:-1 
 	attribute.dexterity:+3 
 	attribute.stamina:-1 
 	advantage.size:4 
 	special.species_factor:9 
 	advantage.speed:+1 
-&feral.bubasti.primal_beast.notes [v( d.sdd )]=
+&feral.bubasti.primal_beast.notes [v( d.sdb )]=
 	+4 to perception rolls
 
 /*
@@ -1058,22 +1149,22 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Hatara (Lion) -------------------------------------------------------
 */
 
-&feral.hatara.war-beast.offsets [v( d.sdd )]=
+&feral.hatara.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+4 
 	attribute.dexterity:+1 
 	attribute.stamina:+5 
 	advantage.size:8 
 	advantage.speed:+1
-&feral.hatara.war-beast.notes [v( d.sdd )]=
+&feral.hatara.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.hatara.primal_beast.offsets [v( d.sdd )]=
+&feral.hatara.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+2 
 	attribute.stamina:+2 
 	advantage.size:+1 
 	special.species_factor:8 
-&feral.hatara.primal_beast.notes [v( d.sdd )]=
+&feral.hatara.primal_beast.notes [v( d.sdb )]=
 	+3 to perception rolls
 
 /*
@@ -1081,20 +1172,20 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Bagrasha (Panther) --------------------------------------------------
 */
 
-&feral.bagrasha.war-beast.offsets [v( d.sdd )]=
+&feral.bagrasha.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+3 
 	attribute.dexterity:+5 
 	attribute.stamina:+3 
 	advantage.size:7 
-&feral.bagrasha.war-beast.notes [v( d.sdd )]=
+&feral.bagrasha.war-beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
-&feral.bagrasha.primal_beast.offsets [v( d.sdd )]=
+&feral.bagrasha.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
 	special.species_factor:8 
-&feral.bagrasha.primal_beast.notes [v( d.sdd )]=
+&feral.bagrasha.primal_beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
 /*
@@ -1102,21 +1193,21 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Balam ---------------------------------------------------------------
 */
 
-&feral.balam.war-beast.offsets [v( d.sdd )]=
+&feral.balam.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+3 
 	attribute.dexterity:+2 
 	attribute.stamina:+3 
 	advantage.size:6 
-&feral.balam.war-beast.notes [v( d.sdd )]=
+&feral.balam.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.balam.primal_beast.offsets [v( d.sdd )]=
+&feral.balam.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+2 
 	attribute.stamina:+3 
 	special.species_factor:9 
 	advantage.speed:-2
-&feral.balam.primal_beast.notes [v( d.sdd )]=
+&feral.balam.primal_beast.notes [v( d.sdb )]=
 	+4 to perception rolls
 
 /*
@@ -1124,23 +1215,23 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Cait Sith -----------------------------------------------------------
 */
 
-// &feral.cait_sith.man-guise.offsets [v( d.sdd )]=@@( nothing )
+// &feral.cait_sith.man-guise.offsets [v( d.sdb )]=@@( nothing )
 
-&feral.cait_sith.throwback.offsets [v( d.sdd )]=
+&feral.cait_sith.throwback.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+5 
 	attribute.stamina:+1 
 	advantage.size:4 
-&feral.cait_sith.throwback.notes [v( d.sdd )]=
+&feral.cait_sith.throwback.notes [v( d.sdb )]=
 	+3 to perception rolls
 
-&feral.cait_sith.primal_beast.offsets [v( d.sdd )]=
+&feral.cait_sith.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:3 
 	advantage.size:3 
 	special.species_factor:7 
-&feral.cait_sith.primal_beast.notes [v( d.sdd )]=
+&feral.cait_sith.primal_beast.notes [v( d.sdb )]=
 	+3 to perception rolls
 
 /*
@@ -1148,19 +1239,19 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Qualm'a ni ----------------------------------------------------------
 */
 
-&feral.qualm'a_ni.war-beast.offsets [v( d.sdd )]=
+&feral.qualm'a_ni.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
-&feral.qualm'a_ni.war-beast.notes [v( d.sdd )]=
+&feral.qualm'a_ni.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.qualm'a_ni.primal_beast.offsets [v( d.sdd )]=
+&feral.qualm'a_ni.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:3 
 	special.species_factor:8 
-&feral.qualm'a_ni.primal_beast.notes [v( d.sdd )]=
+&feral.qualm'a_ni.primal_beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
 /*
@@ -1168,23 +1259,23 @@ For things that rely upon the species (offset and notes):
 -- Bastet: Klinkerash ----------------------------------------------------------
 */
 
-&feral.klinkerash.dire_beast.offsets [v( d.sdd )]=
+&feral.klinkerash.dire_beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+4 
 	attribute.stamina:+2 
 	advantage.size:4 
 	advantage.speed:+3 
-&feral.klinkerash.dire_beast.notes [v( d.sdd )]=
+&feral.klinkerash.dire_beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.klinkerash.primal_beast.offsets [v( d.sdd )]=
+&feral.klinkerash.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:2 
 	attribute.dexterity:5 
 	attribute.stamina:3 
 	advantage.size:2 
 	special.species_factor:7 
 	advantage.speed:12 
-&feral.klinkerash.primal_beast.notes [v( d.sdd )]=
+&feral.klinkerash.primal_beast.notes [v( d.sdb )]=
 	+4 to perception rolls
 
 
@@ -1200,7 +1291,7 @@ For things that rely upon the species (offset and notes):
 == ROYAL APES ==================================================================
 */
 
-&prefix.feral_royal_apes [v( d.sdd )]=
+&prefix.feral_royal_apes [v( d.sdb )]=
 	feral.hanumani_brahman feral.sun_wukong feral.abathakathi feral.tothian 
 	feral.babi-ahsh feral.hugranjah
 
@@ -1210,7 +1301,7 @@ For things that rely upon the species (offset and notes):
 -- Royal Apes: Hanumani Brahman ------------------------------------------------
 */
 
-&feral.hanumani_brahman.war-beast.offsets [v( d.sdd )]=
+&feral.hanumani_brahman.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
@@ -1218,17 +1309,17 @@ For things that rely upon the species (offset and notes):
 	advantage.size:5 
 	health.maximum:+5 
 	special.species_factor:6 
-&feral.hanumani_brahman.war-beast.notes [v( d.sdd )]=
+&feral.hanumani_brahman.war-beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
-&feral.hanumani_brahman.primal_beast.offsets [v( d.sdd )]=
+&feral.hanumani_brahman.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
 	attribute.manipulation:-2 
 	advantage.size:4 
 	special.species_factor:6 
-&feral.hanumani_brahman.primal_beast.notes [v( d.sdd )]=
+&feral.hanumani_brahman.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 /*
@@ -1239,7 +1330,7 @@ The Order of the Luminous Way of Sun Wukong
 
 */
 
-&feral.sun_wukong.war-beast.offsets [v( d.sdd )]=
+&feral.sun_wukong.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
@@ -1247,17 +1338,17 @@ The Order of the Luminous Way of Sun Wukong
 	advantage.size:5 
 	health.maximum:+5 
 	special.species_factor:6 
-&feral.sun_wukong.war-beast.notes [v( d.sdd )]=
+&feral.sun_wukong.war-beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
-&feral.sun_wukong.primal_beast.offsets [v( d.sdd )]=
+&feral.sun_wukong.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
 	attribute.manipulation:-2 
 	advantage.size:4 
 	special.species_factor:6 
-&feral.sun_wukong.primal_beast.notes [v( d.sdd )]=
+&feral.sun_wukong.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 /*
@@ -1265,7 +1356,7 @@ The Order of the Luminous Way of Sun Wukong
 -- Royal Apes: Abathakathi -----------------------------------------------------
 */
 
-&feral.abathakathi.war-beast.offsets [v( d.sdd )]=
+&feral.abathakathi.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+4 
 	attribute.stamina:+2 
@@ -1273,16 +1364,16 @@ The Order of the Luminous Way of Sun Wukong
 	advantage.size:5 
 	health.maximum:+5 
 	special.species_factor:6 
-&feral.abathakathi.war-beast.notes [v( d.sdd )]=
+&feral.abathakathi.war-beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
-&feral.abathakathi.primal_beast.offsets [v( d.sdd )]=
+&feral.abathakathi.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
 	advantage.size:4 
 	special.species_factor:6 
-&feral.abathakathi.primal_beast.notes [v( d.sdd )]=
+&feral.abathakathi.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 /*
@@ -1292,7 +1383,7 @@ The Order of the Luminous Way of Sun Wukong
 Two names for apparently the same species.
 
 */
-&feral.tothian.war-beast.offsets [v( d.sdd )]=
+&feral.tothian.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
@@ -1300,21 +1391,21 @@ Two names for apparently the same species.
 	advantage.size:5 
 	health.maximum:+5 
 	special.species_factor:6 
-&feral.tothian.war-beast.notes [v( d.sdd )]=
+&feral.tothian.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.tothian.primal_beast.offsets [v( d.sdd )]=
+&feral.tothian.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
 	advantage.size:4 
 	special.species_factor:6 
-&feral.tothian.primal_beast.notes [v( d.sdd )]=
+&feral.tothian.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 // --
 
-&feral.babi-ahsh.war-beast.offsets [v( d.sdd )]=
+&feral.babi-ahsh.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+2 
 	attribute.dexterity:+3 
 	attribute.stamina:+2 
@@ -1322,16 +1413,16 @@ Two names for apparently the same species.
 	advantage.size:5 
 	health.maximum:+5 
 	special.species_factor:6 
-&feral.babi-ahsh.war-beast.notes [v( d.sdd )]=
+&feral.babi-ahsh.war-beast.notes [v( d.sdb )]=
 	+2 to perception rolls
 
-&feral.babi-ahsh.primal_beast.offsets [v( d.sdd )]=
+&feral.babi-ahsh.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+3 
 	attribute.stamina:+1 
 	advantage.size:4 
 	special.species_factor:6 
-&feral.babi-ahsh.primal_beast.notes [v( d.sdd )]=
+&feral.babi-ahsh.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 /*
@@ -1339,23 +1430,23 @@ Two names for apparently the same species.
 -- Royal Apes: Hugranjah -------------------------------------------------------
 */
 
-&feral.hugranjah.war-beast.offsets [v( d.sdd )]=
+&feral.hugranjah.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+4 
 	attribute.stamina:+3 
 	attribute.manipulation:-2 
 	advantage.size:8 
 	special.species_factor:5
 	advantage.speed:+1 
-&feral.hugranjah.war-beast.notes [v( d.sdd )]=
+&feral.hugranjah.war-beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
-&feral.hugranjah.primal_beast.offsets [v( d.sdd )]=
+&feral.hugranjah.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:+3 
 	attribute.stamina:+2 
 	attribute.manipulation:-2 
 	advantage.size:7 
 	special.species_factor:5 
-&feral.hugranjah.primal_beast.notes [v( d.sdd )]=
+&feral.hugranjah.primal_beast.notes [v( d.sdb )]=
 	+1 to perception rolls
 
 
@@ -1370,7 +1461,7 @@ Two names for apparently the same species.
 == THE LAUGHING STRANGERS ======================================================
 */
 
-&prefix.feral_laughing_strangers [v( d.sdd )]=
+&prefix.feral_laughing_strangers [v( d.sdb )]=
 	feral.minjur feral.baitu feral.archunem feral.reynardi feral.mistai 
 	feral.wapathemwa
 
@@ -1379,15 +1470,15 @@ Two names for apparently the same species.
 -- Laughing Strangers: Minjur --------------------------------------------------
 */
 
-&feral.minjur.war-beast.offsets [v( d.sdd )]=
+&feral.minjur.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+2 
 	attribute.stamina:+1 
 	advantage.size:5 
 	attribute.manipulation:-5
-&feral.minjur.war-beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.minjur.war-beast.notes [v( d.sdb )]=+2 to perception rolls
 
-&feral.minjur.primal_beast.offsets [v( d.sdd )]=
+&feral.minjur.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:2 
 	attribute.dexterity:+3 
 	attribute.stamina:2 
@@ -1395,7 +1486,7 @@ Two names for apparently the same species.
 	advantage.health:5 
 	special.species_factor:10
 	advantage.speed:+15 
-&feral.minjur.primal_beast.notes [v( d.sdd )]=
+&feral.minjur.primal_beast.notes [v( d.sdb )]=
 	+4 to perception rolls
 
 /*
@@ -1403,17 +1494,17 @@ Two names for apparently the same species.
 -- Laughing Strangers: Baitu ---------------------------------------------------
 */
 
-&feral.baitu.war-beast.offsets [v( d.sdd )]=
+&feral.baitu.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+4 
 	attribute.stamina:+1 
 	advantage.size:5 
 	advantage.speed:+2 
 	attribute.manipulation:-2
-&feral.baitu.war-beast.notes [v( d.sdd )]=
+&feral.baitu.war-beast.notes [v( d.sdb )]=
 	+4 to perception rolls, Fang and Claw (bite) 1 (L)
 
-&feral.baitu.primal_beast.offsets [v( d.sdd )]=
+&feral.baitu.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:2 
 	attribute.dexterity:+5 
 	attribute.stamina:2 
@@ -1421,7 +1512,7 @@ Two names for apparently the same species.
 	advantage.health:5 
 	special.species_factor:10
 	advantage.speed:+15 
-&feral.maeran.primal_beast.notes [v( d.sdd )]=
+&feral.maeran.primal_beast.notes [v( d.sdb )]=
 	+4 to perception rolls, bite does lethal damage
 
 /*
@@ -1429,15 +1520,15 @@ Two names for apparently the same species.
 -- Laughing Strangers: Archunem ------------------------------------------------
 */
 
-&feral.archunem.war-beast.offsets [v( d.sdd )]=
+&feral.archunem.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+2 
 	attribute.stamina:+1 
 	advantage.health:+3 
 	advantage.speed:+2 
-&feral.archunem.war-beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.archunem.war-beast.notes [v( d.sdb )]=+2 to perception rolls
 
-&feral.archunem.primal_beast.offsets [v( d.sdd )]=
+&feral.archunem.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:3 
 	attribute.dexterity:+2 
 	attribute.stamina:2 
@@ -1445,23 +1536,23 @@ Two names for apparently the same species.
 	advantage.health:5 
 	special.species_factor:6 
 	advantage.speed:+7 
-&feral.archunem.primal_beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.archunem.primal_beast.notes [v( d.sdb )]=+2 to perception rolls
 
 /*
 --------------------------------------------------------------------------------
 -- Laughing Strangers: Reynardi ------------------------------------------------
 */
 
-&feral.reynardi.war-beast.offsets [v( d.sdd )]=
+&feral.reynardi.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+2 
 	attribute.stamina:+1 
 	advantage.size:5 
 	advantage.speed:+2 
 	attribute.manipulation:-2
-&feral.reynardi.war-beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.reynardi.war-beast.notes [v( d.sdb )]=+2 to perception rolls
 
-&feral.reynardi.primal_beast.offsets [v( d.sdd )]=
+&feral.reynardi.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:3 
 	attribute.dexterity:+3 
 	attribute.stamina:3 
@@ -1469,22 +1560,22 @@ Two names for apparently the same species.
 	advantage.health:6 
 	special.species_factor:9
 	advantage.speed:+7 
-&feral.reynardi.primal_beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.reynardi.primal_beast.notes [v( d.sdb )]=+2 to perception rolls
 
 /*
 --------------------------------------------------------------------------------
 -- Laughing Strangers: Mistai --------------------------------------------------
 */
 
-&feral.mistai.throwback.offsets [v( d.sdd )]=
+&feral.mistai.throwback.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+2 
 	advantage.health:+1 
 	advantage.size:6 
 	advantage.speed:+2
-&feral.mystai.war-beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.mistai.war-beast.notes [v( d.sdb )]=+2 to perception rolls
 
-&feral.mystai.primal_beast.offsets [v( d.sdd )]=
+&feral.mistai.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:-1 
 	attribute.dexterity:+4 
 	attribute.stamina:3 
@@ -1492,14 +1583,14 @@ Two names for apparently the same species.
 	health.maximum:6 
 	special.species_factor:8
 	advantage.speed:+7 
-&feral.mystai.primal_beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.mistai.primal_beast.notes [v( d.sdb )]=+2 to perception rolls
 
 /*
 --------------------------------------------------------------------------------
 -- Laughing Strangers: Wapathemwa ----------------------------------------------
 */
 
-&feral.wapathemwa.war-beast.offsets [v( d.sdd )]=
+&feral.wapathemwa.war-beast.offsets [v( d.sdb )]=
 	attribute.strength:+1 
 	attribute.dexterity:+2 
 	attribute.stamina:+1 
@@ -1507,9 +1598,9 @@ Two names for apparently the same species.
 	advantage.speed:+2 
 	attribute.manipulation:-4 
 	advantage.health:+1
-&feral.wapathemwa.war-beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.wapathemwa.war-beast.notes [v( d.sdb )]=+2 to perception rolls
 
-&feral.wapathemwa.primal_beast.offsets [v( d.sdd )]=
+&feral.wapathemwa.primal_beast.offsets [v( d.sdb )]=
 	attribute.strength:3 
 	attribute.dexterity:+3 
 	attribute.stamina:2 
@@ -1517,45 +1608,8 @@ Two names for apparently the same species.
 	advantage.health:5 
 	special.species_factor:6
 	advantage.speed:+4 
-&feral.wapathemwa.primal_beast.notes [v( d.sdd )]=+2 to perception rolls
+&feral.wapathemwa.primal_beast.notes [v( d.sdb )]=+2 to perception rolls
 
 
 
 
-
-
-/*
-
---=-=-=-=-=-=-=-=-=-=-=-=-=-=-==--=-=-=
-
-***** Let's see if we can do this. *****
-
-Svetlana pages: Extraordinary Specimen
-
-Svetlana pages: It's an Aspect that gives +1 to size and strength in primal and 
-war forms. Ah, ok.
-
---
-
-&aspect.extraordinary_specimen [v( d.sdd )]=
-	if( <form is war-form>, 
-		attribute.strength:+1 advantage.size:+1 
-	)
-
-Hm. How to make sure the above is only searched for with ferals? Should it be
-
-	&feral.aspect.extraordinary_specimen
-
-I suppose?
-
-So how do we meld this into offsets? Maybe...
-
-	&feral.war-form.aspect.extraordinary_specimen [v( d.sdd )]=
-		attribute.strength:+1 advantage.size:+1 
-
-But do we apply these before or after the main offsets?
--> Before, probably, as they are far less likely to screw up derived traits
--> The main trait that gets screwed up like this is 'speed'.
-
-
-*/
